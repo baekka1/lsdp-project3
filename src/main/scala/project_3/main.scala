@@ -17,9 +17,80 @@ object main{
   Logger.getLogger("org.spark-project").setLevel(Level.WARN)
 
   def LubyMIS(g_in: Graph[Int, Int]): Graph[Int, Int] = {
-    while (remaining_vertices >= 1) {
-        // To Implement
+    // Initialize all vertices with 0 (undecided)
+    var g = g_in.mapVertices((id, attr) => 0)
+    
+    // Keep track of active vertices (not yet decided)
+    var activeGraph = g.mapVertices((id, attr) => true)
+    var remainingVertices = activeGraph.vertices.filter(_._2 == true).count()
+    
+    // Track number of iterations
+    var iterations = 0
+    
+    while (remainingVertices > 0) {
+      iterations += 1
+      
+      // Assign random priorities to active vertices
+      val randomGraph = activeGraph.mapVertices((id, attr) => 
+        if (attr) scala.util.Random.nextDouble() else -1.0)
+      
+      // Find vertices with higher priority than all their neighbors
+      val messageGraph = randomGraph.aggregateMessages[Double](
+        triplet => {
+          if (triplet.srcAttr > 0 && triplet.dstAttr > 0) {
+            if (triplet.srcAttr > triplet.dstAttr) {
+              triplet.sendToDst(triplet.srcAttr)
+            } else {
+              triplet.sendToSrc(triplet.dstAttr)
+            }
+          }
+        },
+        math.max
+      )
+      
+      // Identify vertices to add to MIS (higher priority than all neighbors)
+      val misUpdates = randomGraph.vertices.leftJoin(messageGraph) {
+        case (id, priority, maxNeighborOpt) =>
+          val maxNeighbor = maxNeighborOpt.getOrElse(-1.0)
+          priority > 0 && (maxNeighbor == -1.0 || priority > maxNeighbor)
+      }
+      
+      // Add selected vertices to MIS
+      val newMisVertices = misUpdates.filter(_._2 == true).map(_._1).collect()
+      
+      // Update graph: mark selected vertices as in MIS (1) and their neighbors as not in MIS (-1)
+      val newGraph = g.mapVertices((id, attr) => 
+        if (newMisVertices.contains(id) && attr == 0) 1 else attr
+      )
+      
+      // Mark neighbors of MIS vertices as not in MIS
+      val neighborUpdates = newGraph.aggregateMessages[Int](
+        triplet => {
+          if (triplet.srcAttr == 1 && triplet.dstAttr == 0) {
+            triplet.sendToDst(-1)
+          }
+          if (triplet.dstAttr == 1 && triplet.srcAttr == 0) {
+            triplet.sendToSrc(-1)
+          }
+        },
+        (a, b) => -1
+      )
+      
+      // Apply neighbor updates
+      g = newGraph.joinVertices(neighborUpdates)((id, oldAttr, newAttr) => 
+        if (oldAttr == 0) newAttr else oldAttr
+      )
+      
+      // Update active graph: vertices are active if they're still undecided
+      activeGraph = g.mapVertices((id, attr) => attr == 0)
+      remainingVertices = activeGraph.vertices.filter(_._2 == true).count()
     }
+    
+    // Make sure the result is a valid MIS
+    val isValidMIS = verifyMIS(g)
+    println(s"Luby's algorithm completed in $iterations iterations. Valid MIS: $isValidMIS")
+    
+    return g
   }
 
 
@@ -48,7 +119,7 @@ object main{
   }
 
 
-  def main(args: Array[String]) {
+  def main(args: Array[String]): Unit = {
 
     val conf = new SparkConf().setAppName("project_3")
     val sc = new SparkContext(conf)
