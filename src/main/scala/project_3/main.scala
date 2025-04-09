@@ -24,7 +24,27 @@ object main{
 
 
   def verifyMIS(g_in: Graph[Int, Int]): Boolean = {
-    // To Implement
+    // Checks if any adjacent vertices are in the MIS
+    val adjacencyCheck = g_in.triplets.filter(triplet => triplet.srcAttr == 1 && triplet.dstAttr == 1).count() > 0
+    if (adjacencyCheck) {
+      return false
+    }
+    
+    // Checks if for every vertex, it has at least one vertex in its neightborhood in the MIS
+    val neighborMIS = g_in.aggregateMessages[Int](
+      triplet => {
+        if (triplet.srcAttr == 1) triplet.sendToDst(1)
+        if (triplet.dstAttr == 1) triplet.sendToSrc(1)
+      }, (a,b) => a + b
+    )
+
+    val nonMaximal = g_in.vertices.leftJoin(neighborMIS) {
+      case (_, label, neighborCount) =>
+        label == -1 && neighborCount.getOrElse(0) == 0
+      }.filter { case (_, isNonMaximal) => isNonMaximal}
+        .count() > 0
+
+      !nonMaximal
   }
 
 
