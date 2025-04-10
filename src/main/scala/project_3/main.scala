@@ -22,9 +22,16 @@ object main{
 
     var progressMade = true
     var iterations = 0
+    
+    // Get initial count of active vertices
+    val initialActive = g.vertices.filter(_._2 == 0).count()
+    println(s"Initial active vertices: $initialActive")
+
+    val startTime = System.currentTimeMillis()
 
     while (progressMade) {
       iterations += 1
+      val iterStartTime = System.currentTimeMillis()
 
       // Assign random priority to undecided vertices
       val randomGraph = g.mapVertices { case (id, attr) =>
@@ -80,12 +87,35 @@ object main{
           }
       }
 
+      // Count remaining active vertices
+      val activeVertices = g.vertices.filter(_._2 == 0).count()
+      
+      // Calculate iteration time
+      val iterEndTime = System.currentTimeMillis()
+      val iterTimeSeconds = (iterEndTime - iterStartTime) / 1000.0
+      
+      // Print progress report for this iteration
+      println(s"""
+        |Iteration $iterations:
+        |  - Time: $iterTimeSeconds seconds
+        |  - Active vertices remaining: $activeVertices
+        |  - Vertices added to MIS: ${newMISVertices.length}
+        |""".stripMargin)
+
       // Progress is made if any new MIS vertices were selected this round
       progressMade = newMISVertices.nonEmpty
     }
 
+    // Calculate total runtime
+    val totalTime = (System.currentTimeMillis() - startTime) / 1000.0
+    
     val isValidMIS = verifyMIS(g)
-    println(s"Luby's algorithm completed in $iterations iterations. Valid MIS: $isValidMIS")
+    println(s"""
+      |=== Final Summary ===
+      |Total iterations: $iterations
+      |Total runtime: $totalTime seconds
+      |Valid MIS: $isValidMIS
+      |===================""".stripMargin)
 
     return g
   }
