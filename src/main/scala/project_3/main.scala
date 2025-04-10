@@ -8,6 +8,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.graphx._
 import org.apache.spark.storage.StorageLevel
 import org.apache.log4j.{Level, Logger}
+import scala.util.Random
 
 object main{
   val rootLogger = Logger.getRootLogger()
@@ -17,56 +18,49 @@ object main{
   Logger.getLogger("org.spark-project").setLevel(Level.WARN)
 
   def LubyMIS(g_in: Graph[Int, Int]): Graph[Int, Int] = {
-    // Initialize all vertices with 0 (undecided)
-    var g = g_in.mapVertices((id, attr) => 0)
-    
-    // Keep track of active vertices (not yet decided)
-    var activeGraph = g.mapVertices((id, attr) => true)
-    var remainingVertices = activeGraph.vertices.filter(_._2 == true).count()
-    
-    // Track number of iterations
-    var iterations = 0
-    
-    while (remainingVertices > 0) {
-      val startTime = System.currentTimeMillis()
+    var g = g_in.mapVertices((id, _) => 0)
 
+    var progressMade = true
+    var iterations = 0
+
+    while (progressMade) {
       iterations += 1
-      
-      // Assign random priorities to active vertices
-      val randomGraph = activeGraph.mapVertices((id, attr) => 
-        if (attr) scala.util.Random.nextDouble() else -1.0)
-      
-      // Find vertices with higher priority than all their neighbors
-      val messageGraph = randomGraph.aggregateMessages[Double](
+
+      // Assign random priority to undecided vertices
+      val randomGraph = g.mapVertices { case (id, attr) =>
+        if (attr == 0) Random.nextDouble() else -1.0
+      }
+
+      // Each vertex sends its priority to neighbors
+      val neighborMax = randomGraph.aggregateMessages[Double](
         triplet => {
           if (triplet.srcAttr > 0 && triplet.dstAttr > 0) {
-            if (triplet.srcAttr > triplet.dstAttr) {
-              triplet.sendToDst(triplet.srcAttr)
-            } else {
-              triplet.sendToSrc(triplet.dstAttr)
-            }
+            triplet.sendToDst(triplet.srcAttr)
+            triplet.sendToSrc(triplet.dstAttr)
           }
         },
         math.max
       )
-      
-      // Identify vertices to add to MIS (higher priority than all neighbors)
-      val misUpdates = randomGraph.vertices.leftJoin(messageGraph) {
-        case (id, priority, maxNeighborOpt) =>
-          val maxNeighbor = maxNeighborOpt.getOrElse(-1.0)
-          priority > 0 && (maxNeighbor == -1.0 || priority > maxNeighbor)
+
+      // Vertices with higher priority than any neighbor
+      val candidates = randomGraph.vertices.leftJoin(neighborMax) {
+        case (id, priority, neighborPriorityOpt) =>
+          val neighborPriority = neighborPriorityOpt.getOrElse(-1.0)
+          priority > neighborPriority
       }
-      
-      // Add selected vertices to MIS
-      val newMisVertices = misUpdates.filter(_._2 == true).map(_._1).collect()
-      
-      // Update graph: mark selected vertices as in MIS (1) and their neighbors as not in MIS (-1)
-      val newGraph = g.mapVertices((id, attr) => 
-        if (newMisVertices.contains(id) && attr == 0) 1 else attr
-      )
-      
-      // Mark neighbors of MIS vertices as not in MIS
-      val neighborUpdates = newGraph.aggregateMessages[Int](
+
+      val newMISVertices = candidates.filter(_._2).map(_._1).collect()
+      val misSet = g.vertices.sparkContext.broadcast(newMISVertices.toSet)
+
+      // Update: mark MIS vertices
+      val updatedGraph = g.mapVertices { case (id, attr) =>
+        if (attr == 0 && misSet.value.contains(id)) 1 else attr
+      }
+
+      misSet.destroy()
+
+      // Deactivate neighbors of MIS vertices
+      val neighborUpdates = updatedGraph.aggregateMessages[Int](
         triplet => {
           if (triplet.srcAttr == 1 && triplet.dstAttr == 0) {
             triplet.sendToDst(-1)
@@ -75,27 +69,24 @@ object main{
             triplet.sendToSrc(-1)
           }
         },
-        (a, b) => -1
+        (a, b) => a
       )
-      
-      // Apply neighbor updates
-      g = newGraph.joinVertices(neighborUpdates)((id, oldAttr, newAttr) => 
-        if (oldAttr == 0) newAttr else oldAttr
-      )
-      
-      // Update active graph: vertices are active if they're still undecided
-      activeGraph = g.mapVertices((id, attr) => attr == 0)
-      remainingVertices = activeGraph.vertices.filter(_._2 == true).count()
-      val endTime = System.currentTimeMillis()
-      val durationSeconds = (endTime - startTime) / 1000
 
-      println(s"iteration: $iterations time: $durationSeconds")
+      g = updatedGraph.outerJoinVertices(neighborUpdates) {
+        case (id, oldAttr, updateOpt) =>
+          updateOpt match {
+            case Some(update) if oldAttr == 0 => update
+            case _ => oldAttr
+          }
+      }
+
+      // Progress is made if any new MIS vertices were selected this round
+      progressMade = newMISVertices.nonEmpty
     }
-    
-    // Make sure the result is a valid MIS
+
     val isValidMIS = verifyMIS(g)
     println(s"Luby's algorithm completed in $iterations iterations. Valid MIS: $isValidMIS")
-    
+
     return g
   }
 
