@@ -28,6 +28,8 @@ object main{
     var iterations = 0
     
     while (remainingVertices > 0) {
+      val startTime = System.currentTimeMillis()
+
       iterations += 1
       
       // Assign random priorities to active vertices
@@ -84,6 +86,10 @@ object main{
       // Update active graph: vertices are active if they're still undecided
       activeGraph = g.mapVertices((id, attr) => attr == 0)
       remainingVertices = activeGraph.vertices.filter(_._2 == true).count()
+      val endTime = System.currentTimeMillis()
+      val durationSeconds = (endTime - startTime) / 1000
+
+      println(s"iteration: $iterations time: $durationSeconds")
     }
     
     // Make sure the result is a valid MIS
