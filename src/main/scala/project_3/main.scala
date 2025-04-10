@@ -18,27 +18,22 @@ object main{
   Logger.getLogger("org.spark-project").setLevel(Level.WARN)
 
   def LubyMIS(g_in: Graph[Int, Int]): Graph[Int, Int] = {
-    var g = g_in.mapVertices((id, _) => 0)
-
+    var g = g_in.mapVertices((_, _) => 0) // 0 = undecided, 1 = in MIS, -1 = excluded
     var progressMade = true
-    var iterations = 0
-    
-    // Get initial count of active vertices
-    val initialActive = g.vertices.filter(_._2 == 0).count()
-    println(s"Initial active vertices: $initialActive")
+    var iteration = 0
 
     val startTime = System.currentTimeMillis()
 
     while (progressMade) {
-      iterations += 1
-      val iterStartTime = System.currentTimeMillis()
+      iteration += 1
+      val iterStart = System.currentTimeMillis()
 
       // Assign random priority to undecided vertices
-      val randomGraph = g.mapVertices { case (id, attr) =>
+      val randomGraph = g.mapVertices { case (_, attr) =>
         if (attr == 0) Random.nextDouble() else -1.0
       }
 
-      // Each vertex sends its priority to neighbors
+      // Each vertex receives max neighbor priority
       val neighborMax = randomGraph.aggregateMessages[Double](
         triplet => {
           if (triplet.srcAttr > 0 && triplet.dstAttr > 0) {
@@ -49,75 +44,58 @@ object main{
         math.max
       )
 
-      // Vertices with higher priority than any neighbor
-      val candidates = randomGraph.vertices.leftJoin(neighborMax) {
-        case (id, priority, neighborPriorityOpt) =>
-          val neighborPriority = neighborPriorityOpt.getOrElse(-1.0)
-          priority > neighborPriority
+      // Select vertices that have highest priority among neighbors
+      val newMIS = randomGraph.vertices.leftJoin(neighborMax) {
+        case (_, priority, maxNeighborPriorityOpt) =>
+          val maxNeighborPriority = maxNeighborPriorityOpt.getOrElse(-1.0)
+          priority > maxNeighborPriority
+      }.filter(_._2).mapValues(_ => 1) // mark selected vertices with 1
+
+      // Update vertices: add new MIS vertices
+      g = g.joinVertices(newMIS) {
+        case (_, oldAttr, newAttr) => newAttr
       }
 
-      // Collect new MIS vertices
-      val newMISVertices = candidates.filter(_._2).map(_._1).collect().toSet
-
-      // Update: mark MIS vertices
-      val updatedGraph = g.mapVertices { case (id, attr) =>
-        if (attr == 0 && newMISVertices.contains(id)) 1 else attr
-      }
-
-      // Deactivate neighbors of MIS vertices
-      val neighborUpdates = updatedGraph.aggregateMessages[Int](
+      // Deactivate neighbors of new MIS vertices
+      val neighborDeactivations = g.aggregateMessages[Int](
         triplet => {
-          if (triplet.srcAttr == 1 && triplet.dstAttr == 0) {
-            triplet.sendToDst(-1)
-          }
-          if (triplet.dstAttr == 1 && triplet.srcAttr == 0) {
-            triplet.sendToSrc(-1)
-          }
+          if (triplet.srcAttr == 1 && triplet.dstAttr == 0) triplet.sendToDst(-1)
+          if (triplet.dstAttr == 1 && triplet.srcAttr == 0) triplet.sendToSrc(-1)
         },
-        (a, b) => a
+        (a, _) => a
       )
 
-      g = updatedGraph.outerJoinVertices(neighborUpdates) {
-        case (id, oldAttr, updateOpt) =>
-          updateOpt match {
-            case Some(update) if oldAttr == 0 => update
-            case _ => oldAttr
-          }
+      g = g.outerJoinVertices(neighborDeactivations) {
+        case (_, oldAttr, Some(update)) if oldAttr == 0 => update
+        case (_, oldAttr, _) => oldAttr
       }
 
-      // Count remaining active vertices
       val activeVertices = g.vertices.filter(_._2 == 0).count()
-      
-      // Calculate iteration time
-      val iterEndTime = System.currentTimeMillis()
-      val iterTimeSeconds = (iterEndTime - iterStartTime) / 1000.0
-      
-      // Print progress report for this iteration
+      val iterTime = (System.currentTimeMillis() - iterStart) / 1000.0
+
       println(s"""
-        |Iteration $iterations:
-        |  - Time: $iterTimeSeconds seconds
+        |Iteration $iteration:
+        |  - Time: $iterTime seconds
         |  - Active vertices remaining: $activeVertices
-        |  - Vertices added to MIS: ${newMISVertices.size}
+        |  - New MIS vertices: ${newMIS.count()}
         |""".stripMargin)
 
-      // Progress is made if any new MIS vertices were selected this round
-      progressMade = newMISVertices.nonEmpty
+      progressMade = newMIS.count() > 0
     }
 
-    // Calculate total runtime
     val totalTime = (System.currentTimeMillis() - startTime) / 1000.0
-    
-    val isValidMIS = verifyMIS(g)
+    val isValid = verifyMIS(g)
+
     println(s"""
       |=== Final Summary ===
-      |Total iterations: $iterations
+      |Total iterations: $iteration
       |Total runtime: $totalTime seconds
-      |Valid MIS: $isValidMIS
-      |===================""".stripMargin)
+      |Valid MIS: $isValid
+      |===================
+      |""".stripMargin)
 
-    return g
+    g
   }
-
 
   def verifyMIS(g_in: Graph[Int, Int]): Boolean = {
     // Checks if any adjacent vertices are in the MIS
