@@ -56,15 +56,13 @@ object main{
           priority > neighborPriority
       }
 
-      val newMISVertices = candidates.filter(_._2).map(_._1).collect()
-      val misSet = g.vertices.sparkContext.broadcast(newMISVertices.toSet)
+      // Collect new MIS vertices
+      val newMISVertices = candidates.filter(_._2).map(_._1).collect().toSet
 
       // Update: mark MIS vertices
       val updatedGraph = g.mapVertices { case (id, attr) =>
-        if (attr == 0 && misSet.value.contains(id)) 1 else attr
+        if (attr == 0 && newMISVertices.contains(id)) 1 else attr
       }
-
-      misSet.destroy()
 
       // Deactivate neighbors of MIS vertices
       val neighborUpdates = updatedGraph.aggregateMessages[Int](
@@ -99,7 +97,7 @@ object main{
         |Iteration $iterations:
         |  - Time: $iterTimeSeconds seconds
         |  - Active vertices remaining: $activeVertices
-        |  - Vertices added to MIS: ${newMISVertices.length}
+        |  - Vertices added to MIS: ${newMISVertices.size}
         |""".stripMargin)
 
       // Progress is made if any new MIS vertices were selected this round
