@@ -16,87 +16,85 @@ object main{
 
   Logger.getLogger("org.apache.spark").setLevel(Level.WARN)
   Logger.getLogger("org.spark-project").setLevel(Level.WARN)
-
-  def LubyMIS(g_in: Graph[Int, Int]): Graph[Int, Int] = {
-    var g = g_in.mapVertices((_, _) => 0) // 0 = undecided, 1 = in MIS, -1 = excluded
-    var progressMade = true
-    var iteration = 0
-
-    val startTime = System.currentTimeMillis()
-
-    while (progressMade) {
-      iteration += 1
-      val iterStart = System.currentTimeMillis()
-
-      // Assign random priority to undecided vertices
-      val randomGraph = g.mapVertices { case (_, attr) =>
-        if (attr == 0) Random.nextDouble() else -1.0
-      }
-
-      // Each vertex receives max neighbor priority
-      val neighborMax = randomGraph.aggregateMessages[Double](
-        triplet => {
-          if (triplet.srcAttr > 0 && triplet.dstAttr > 0) {
-            triplet.sendToDst(triplet.srcAttr)
-            triplet.sendToSrc(triplet.dstAttr)
-          }
-        },
-        math.max
-      )
-
-      // Select vertices that have highest priority among neighbors
-      val newMIS = randomGraph.vertices.leftJoin(neighborMax) {
-        case (_, priority, maxNeighborPriorityOpt) =>
-          val maxNeighborPriority = maxNeighborPriorityOpt.getOrElse(-1.0)
-          priority > maxNeighborPriority
-      }.filter(_._2).mapValues(_ => 1) // mark selected vertices with 1
-
-      // Update vertices: add new MIS vertices
-      g = g.joinVertices(newMIS) {
-        case (_, oldAttr, newAttr) => newAttr
-      }
-
-      // Deactivate neighbors of new MIS vertices
-      val neighborDeactivations = g.aggregateMessages[Int](
-        triplet => {
-          if (triplet.srcAttr == 1 && triplet.dstAttr == 0) triplet.sendToDst(-1)
-          if (triplet.dstAttr == 1 && triplet.srcAttr == 0) triplet.sendToSrc(-1)
-        },
-        (a, _) => a
-      )
-
-      g = g.outerJoinVertices(neighborDeactivations) {
-        case (_, oldAttr, Some(update)) if oldAttr == 0 => update
-        case (_, oldAttr, _) => oldAttr
-      }
-
-      val activeVertices = g.vertices.filter(_._2 == 0).count()
-      val iterTime = (System.currentTimeMillis() - iterStart) / 1000.0
-
-      println(s"""
-        |Iteration $iteration:
-        |  - Time: $iterTime seconds
-        |  - Active vertices remaining: $activeVertices
-        |  - New MIS vertices: ${newMIS.count()}
-        |""".stripMargin)
-
-      progressMade = newMIS.count() > 0
-    }
-
-    val totalTime = (System.currentTimeMillis() - startTime) / 1000.0
-    val isValid = verifyMIS(g)
-
-    println(s"""
-      |=== Final Summary ===
-      |Total iterations: $iteration
-      |Total runtime: $totalTime seconds
-      |Valid MIS: $isValid
-      |===================
-      |""".stripMargin)
-
-    g
+  def LubyMIS(g_in: Graph[Int, Int]): Graph[Int, Int] = {
+    var g = g_in.mapVertices((id,attr)=>0) // for if in MIS or not
+    //var activeGraph = g_in.mapVertices((id,attr)=>true) // for if active or not
+    //var n_active = activeGraph.vertices.filter(_._2 == true).count()
+    var n_remaining_vertices = g.vertices.filter(_._2 == 0).count()
+    var iterations = 0
+    val startTime = System.currentTimeMillis()
+    while (n_remaining_vertices > 0) {
+      val iterStart = System.currentTimeMillis()
+      iterations += 1
+
+      val randomGraph = g.mapVertices { case (id, attr) =>
+        if (attr == 0) Random.nextDouble() else -1.0
+      }
+
+      val neighborMax = randomGraph.aggregateMessages[Boolean](
+        triplet => {
+          if (triplet.srcAttr >= 0 && triplet.dstAttr >= 0) {
+            if (triplet.srcAttr > triplet.dstAttr){
+              triplet.sendToSrc(true)
+              triplet.sendToDst(false)
+            }
+            if (triplet.dstAttr > triplet.srcAttr) {
+              triplet.sendToDst(true)
+              triplet.sendToSrc(false)
+            }
+          }
+        }, (a,b) => a && b
+      )
+      
+      // Add to MIS
+      g = g.outerJoinVertices(neighborMax) {
+        case (id, attr,Some(msg)) =>
+          // add to MIS if largest vertex
+          if (attr == 0 && msg) 1 
+          else attr
+        case (id, attr, None) =>
+          // case of isolated vertices
+          if (attr == 0) 1
+          else attr
+      }
+      
+      // update neighbors
+      val neighbors = g.aggregateMessages[Int] (
+        triplet => {
+          if (triplet.srcAttr == 1) triplet.sendToDst(-1)
+          if (triplet.dstAttr == 1) triplet.sendToSrc(-1)
+        }, 
+        (a,b) => -1
+      )
+
+      g = g.outerJoinVertices(neighbors) {
+        case (id, attr, Some(-1)) => -1
+        case (id, attr, _) => attr
+      }
+
+      n_remaining_vertices = g.vertices.filter(_._2 == 0).count()
+      val endTime = System.currentTimeMillis()
+      val durationSeconds = (endTime - iterStart) / 1000
+      System.out.println(s"Iteration: $iterations, Time: $durationSeconds, Active Vertices: $n_remaining_vertices")
+    }
+    //(g)
+      
+
+    val totalTime = (System.currentTimeMillis() - startTime) / 1000.0
+    val isValid = verifyMIS(g)
+    System.out.println(s"Total Iterations: $iterations, Time: $totalTime, isValid: $isValid")
+
+
+    // println(s"""
+    //   |=== Final Summary ===s
+    //   |Total iterations: $iterations
+    //   |Total runtime: $totalTime seconds
+    //   |Valid MIS: $isValid
+    //   |===================
+    //   |""".stripMargin)
+    g
   }
-
+  
   def verifyMIS(g_in: Graph[Int, Int]): Boolean = {
     // Checks if any adjacent vertices are in the MIS
     val adjacencyCheck = g_in.triplets.filter(triplet => triplet.srcAttr == 1 && triplet.dstAttr == 1).count() > 0
