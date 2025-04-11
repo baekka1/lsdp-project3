@@ -15,11 +15,11 @@
 
 |        Graph file       |Iterations | Running Time | Is an MIS? |
 | ----------------------- |-----------|--------------|------------|
-| small_edges.csv         |2          |1 second      | Yes        |
-| line_100_edges.csv      |3| 1 second | Yes|
-| twitter_100_edges.csv   |2| 1 second| Yes|
-| twitter_1000_edges.csv  |2| 1 second | Yes|
-| twitter_10000_edges.csv |3| 2 seconds | Yes|
+| small_edges.csv         |1          |0.253 seconds      | Yes        |
+| line_100_edges.csv      |2| 0.371 seconds | Yes|
+| twitter_100_edges.csv   |2| 0.473 seconds| Yes|
+| twitter_1000_edges.csv  |2| 0.375 seconds | Yes|
+| twitter_10000_edges.csv |3| 0.672 seconds | Yes|
 
 3. **(3 points)**  
 a. Run `LubyMIS` on `twitter_original_edges.csv` in GCP with 3x4 cores (vCPUs). Report the number of iterations, running time, and remaining active vertices (i.e. vertices whose status has yet to be determined) at the end of **each iteration**. You may need to include additional print statements in `LubyMIS` in order to acquire this information. Finally, verify your outputs with `verifyMIS`.  
