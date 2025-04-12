@@ -1,7 +1,5 @@
-# Project 3: Katie Baek and Rafael Singer
-
-## 1. Implement the `verifyMIS` function.
-
+# Project 3 Report: Rafael Singer and Katie Baek
+## Part 1
 |        Graph file       |           MIS file           | Is an MIS? |
 | ----------------------- | ---------------------------- | ---------- |
 | small_edges.csv         | small_edges_MIS.csv          | Yes        |
@@ -11,27 +9,35 @@
 | twitter_10000_edges.csv | twitter_10000_MIS_test_1.csv | No         |
 | twitter_10000_edges.csv | twitter_10000_MIS_test_2.csv | Yes        |
 
-## 2. Implement the `LubyMIS` function.
+## Part 2
+|        Graph file       | Number of Iterations | Runtime (s) | Is a Valid MIS? |
+| ----------------------- | -------------------- | ----------- | --------------- |
+| small_edges.csv         | 2                    | 3           | Yes             |
+| line_100_edges.csv      | 2                    | 4           | Yes             |
+| twitter_100_edges.csv   | 2                    | 4           | Yes             |
+| twitter_1000_edges.csv  | 3                    | 5           | Yes             |
+| twitter_10000_edges.csv | 3                    | 6           | Yes             |
 
-|        Graph file       |Iterations | Running Time | Is an MIS? |
-| ----------------------- |-----------|--------------|------------|
-| small_edges.csv         |1          |0.253 seconds      | Yes        |
-| line_100_edges.csv      |2| 0.371 seconds | Yes|
-| twitter_100_edges.csv   |2| 0.473 seconds| Yes|
-| twitter_1000_edges.csv  |2| 0.375 seconds | Yes|
-| twitter_10000_edges.csv |3| 0.672 seconds | Yes|
-
-3. **(3 points)**  
-a. Run `LubyMIS` on `twitter_original_edges.csv` in GCP with 3x4 cores (vCPUs). Report the number of iterations, running time, and remaining active vertices (i.e. vertices whose status has yet to be determined) at the end of **each iteration**. You may need to include additional print statements in `LubyMIS` in order to acquire this information. Finally, verify your outputs with `verifyMIS`.  
-b. Run `LubyMIS` on `twitter_original_edges.csv` with 4x2 cores (vCPUs) and then 2x2 cores (vCPUs). Compare the running times between the 3 jobs with varying core specifications that you submitted in **3a** and **3b**.
-
-## Submission via GitHub
-Delete your project's current **README.md** file (the one you're reading right now) and include your report as a new **README.md** file in the project root directory. Have no fear—the README with the project description is always available for reading in the template repository you created your repository from. For more information on READMEs, feel free to visit [this page](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/about-readmes) in the GitHub Docs. You'll be writing in [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown). Be sure that your repository is up to date and you have pushed all changes you've made to the project's code. When you're ready to submit, simply provide the link to your repository in the Canvas assignment's submission.
-
-## You must do the following to receive full credit:
-1. Create your report in the ``README.md`` and push it to your repo.
-2. In the report, you must include your (and your group member's) full name in addition to any collaborators.
-3. Submit a link to your repo in the Canvas assignment.
-
-## Late submission penalties
-Please refer to the course policy.
+## Part 3
+4x2:
+Iteration: 1, Time: 31, Active Vertices: 7056710
+Iteration: 2, Time: 29, Active Vertices: 31558
+Iteration: 3, Time: 30, Active Vertices: 418
+Iteration: 4, Time: 33, Active Vertices: 1
+Iteration: 5, Time: 30, Active Vertices: 0
+Total Iterations: 5, Time: 156.191, isValid: true
+3x4:
+Iteration: 1, Time: 15, Active Vertices: 6881060
+Iteration: 2, Time: 11, Active Vertices: 39734
+Iteration: 3, Time: 9, Active Vertices: 567
+Iteration: 4, Time: 10, Active Vertices: 1
+Iteration: 5, Time: 10, Active Vertices: 0
+Total Iterations: 5, Time: 57.183, isValid: true
+2x2:
+Iteration: 1, Time: 41, Active Vertices: 6971905
+Iteration: 2, Time: 31, Active Vertices: 33369
+Iteration: 3, Time: 31, Active Vertices: 404
+Iteration: 4, Time: 30, Active Vertices: 2
+Iteration: 5, Time: 31, Active Vertices: 0
+Total Iterations: 5, Time: 166.314, isValid: true
+While the 2x2 and 4x2 trials had similar runtime, the 3x4 trial was significantly faster both per iteration and in total.
